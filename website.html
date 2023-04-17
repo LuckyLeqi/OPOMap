@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPO Locations Map</title>
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.css' rel='stylesheet' />
+    <style>
+        body { margin: 0; padding: 0; display: flex; }
+        #map { flex: 1; height: 100vh; }
+        #controls { padding: 20px; min-width: 250px; }
+        select { width: 100%; }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <label for="state">State:</label>
+        <select id="state" onchange="filterOpos()">
+            <option value="">All States</option>
+        </select>
+        <br>
+        <label for="timezone">Timezone:</label>
+        <select id="timezone" onchange="filterOpos()">
+            <option value="">All Timezones</option>
+        </select>
+    </div>
+    <div id="map"></div>
+    <script>
+        // Replace this with your own Mapbox access token
+        mapboxgl.accessToken = 'pk.eyJ1IjoibHVja3lsZXFpIiwiYSI6ImNsZ2tqYThxczFnZWoza3BucTB4dnF4OHAifQ.5siVm7JdfJm_eBeDeLD5SQ';
+
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/streets-v11',
+            center: [-96.5, 38.8],
+            zoom: 3.5
+        });
+
+        // Limit the map to just the United States
+        map.setMaxBounds([
+            [-168.6, 18.0], // Southwest coordinates
+            [-60.3, 73.3]   // Northeast coordinates
+        ]);
+
+        async function loadOpoData() {
+            try {
+                const response = await fetch('opos.json');
+                const opoData = await response.json();
+
+                map.on('load', function() {
+                    const states = new Set();
+                    const timezones = new Set();
+
+                    const features = opoData.map(opo => {
+                        states.add(opo.state);
+                        timezones.add(opo.timezone);
+
+                        return {
+                            'type': 'Feature',
+                            'properties': {
+                                'name': opo.name,
+                                    'code': opo.code,
+                                    'state': opo.state,
+                                    'code2': opo.code2,
+                                    'timezone': opo.timezone
+                            },
+                            'geometry': {
+                                'type': 'Point',
+                                'coordinates': [opo.longitude, opo.latitude]
+                            }
+                        };
+                    });
+
+                    states.forEach(state => {
+                        const option = document.createElement('option');
+                        option.value = state;
+                        option.text = state;
+                        document.getElementById('state').appendChild(option);
+                    });
+
+                    timezones.forEach(timezone => {
+                        const option = document.createElement('option');
+                        option.value = timezone;
+                        option.text = timezone;
+                        document.getElementById('timezone').appendChild(option);
+                    });
+
+                    map.addSource('opos', {
+                        'type': 'geojson',
+                        'data': {
+                            'type': 'FeatureCollection',
+                            'features': features
+                        }
+                    });
+
+                    map.addLayer({
+                        'id': 'opos',
+                        'type': 'circle',
+                        'source': 'opos',
+                        'paint': {
+                            'circle-radius': 5,
+                            'circle-color': '#B42222'
+                        }
+                });
+
+                const popup = new mapboxgl.Popup({
+                    closeButton: false,
+                    closeOnClick: false
+                });
+
+                map.on('mouseenter', 'opos', function(e) {
+                    map.getCanvas().style.cursor = 'pointer';
+
+                    const coordinates = e.features[0].geometry.coordinates.slice();
+                    const properties = e.features[0].properties;
+                    const content = `
+                            <h3>${properties.name}</h3>
+                            <p>Code: ${properties.code}</p>
+                            <p>State: ${properties.state}</p>
+                            <p>Code 2: ${properties.code2}</p>
+                            <p>Timezone: ${properties.timezone}</p>
+                    `;
+
+                    popup
+                        .setLngLat(coordinates)
+                        .setHTML(content)
+                        .addTo(map);
+                });
+
+                map.on('mouseleave', 'opos', function() {
+                    map.getCanvas().style.cursor = '';
+                    popup.remove();
+                });
+            });
+        } catch (error) {
+            console.error('Error fetching OPO data:', error);
+        }
+    }
+
+    loadOpoData();
+
+    function filterOpos() {
+        const state = document.getElementById('state').value;
+        const timezone = document.getElementById('timezone').value;
+
+        const filter = ['all'];
+
+        if (state) {
+            filter.push(['==', 'state', state]);
+        }
+
+        if (timezone) {
+            filter.push(['==', 'timezone', timezone]);
+        }
+
+        map.setFilter('opos', filter);
+    }
+</script>
+</body>
+</html>
